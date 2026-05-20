@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm list *)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\conor\\\\ai-insights\\\\app\\\\api\\\\analyze\" \"C:\\\\Users\\\\conor\\\\ai-insights\\\\app\\\\api\\\\report\\\\[slug]\" \"C:\\\\Users\\\\conor\\\\ai-insights\\\\app\\\\report\\\\[slug]\")",
+      "Bash(npm run *)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\conor\\\\ai-insights\\\\.claude\")",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(Get-ChildItem -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\conor\\\\ai-insights\\\\app\\\\s\\\\[token]\")",
+      "Bash(npx tsc *)",
+      "Bash(npx next *)",
+      "PowerShell(\\(Get-Item \"C:\\\\Users\\\\conor\\\\ai-insights\\\\app\\\\s\\\\[token]\\\\page.tsx\"\\).LastWriteTime = Get-Date)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\conor\\\\ai-insights\" -Directory -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object Name)",
+      "Bash(curl -s -X POST http://localhost:3000/api/analyze -H 'Content-Type: application/json' -d '{\"domain\":\"demanddrive.com\",\"industry\":\"B2B demand generation\"}' --max-time 60)",
+      "Bash(curl -s -X POST http://localhost:3000/api/analyze -H \"Content-Type: application/json\" -d \"{\\\\\"domain\\\\\":\\\\\"hubspot.com\\\\\",\\\\\"industry\\\\\":\\\\\"SaaS\\\\\"}\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(curl -s -X POST http://localhost:3001/api/analyze -H \"Content-Type: application/json\" -d \"{\\\\\"domain\\\\\":\\\\\"hubspot.com\\\\\",\\\\\"industry\\\\\":\\\\\"SaaS\\\\\"}\" > C:/tmp/analyze-out.json 2>&1; echo \"EXIT:$?\")",
+      "Bash(mkdir -p /tmp)",
+      "Bash(curl -s -X POST http://localhost:3001/api/analyze -H \"Content-Type: application/json\" -d '{\"domain\":\"hubspot.com\",\"industry\":\"SaaS\"}' -o /tmp/analyze-out.json)",
+      "PowerShell($body = '{\"domain\":\"hubspot.com\",\"industry\":\"SaaS\"}'; $result = Invoke-WebRequest -Uri \"http://localhost:3000/api/analyze\" -Method POST -Body $body -ContentType \"application/json\" -TimeoutSec 90 -ErrorAction SilentlyContinue; $result.StatusCode; $result.Content | Select-Object -First 200)",
+      "PowerShell(Start-Sleep -Seconds 4; $body = '{\"domain\":\"salesforce.com\",\"industry\":\"CRM\"}'; $result = Invoke-RestMethod -Uri \"http://localhost:3000/api/analyze\" -Method POST -Body $body -ContentType \"application/json\" -TimeoutSec 90; Write-Output \"slug: $\\($result.slug\\)\")",
+      "PowerShell($result = Invoke-RestMethod -Uri \"http://localhost:3000/api/report/intercom-com-1vv76e\" -Method GET -TimeoutSec 15; $ai = $result.buckets.aiVisibility; Write-Output \"AI bucket earned: $\\($ai.earned\\)/$\\($ai.possible\\)\"; $ai.aiPlatformScores | ForEach-Object { Write-Output \"  $\\($_.platform\\): $\\($_.score\\)/$\\($_.maxScore\\) available=$\\($_.available\\)\" })"
+    ]
+  }
+}
