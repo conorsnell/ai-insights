@@ -709,7 +709,13 @@ function RawSignals({ report }: { report: Report }) {
               >
                 {label}
               </p>
-              <table className="w-full" style={{ fontSize: 12 }}>
+              <table className="w-full" style={{ fontSize: 12, tableLayout: 'fixed' }}>
+                <colgroup>
+                  <col style={{ width: '40%' }} />
+                  <col style={{ width: '15%' }} />
+                  <col style={{ width: '25%' }} />
+                  <col style={{ width: '20%' }} />
+                </colgroup>
                 <thead>
                   <tr className="uppercase tracking-wide" style={{ backgroundColor: C.lightGrey }}>
                     <th className="text-left px-5 py-1.5 font-medium" style={{ color: C.charcoal, fontSize: 11 }}>Signal</th>

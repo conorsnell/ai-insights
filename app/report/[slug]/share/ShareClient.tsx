@@ -1,8 +1,7 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
 import type { Report, BucketScore } from '@/lib/types';
-import { CTABand, InfoTooltip } from '@/components/brand-ui';
+import { InfoTooltip } from '@/components/brand-ui';
 
 // ─── Brand palette ────────────────────────────────────────────────────────────
 const C = {
@@ -207,64 +206,10 @@ function TeaserInsights({ report }: { report: Report }) {
   );
 }
 
-// ─── Gate Section ─────────────────────────────────────────────────────────────
-
-function GateSection({ formRef }: { formRef: React.RefObject<HTMLDivElement | null> }) {
-  return (
-    <section
-      className="rounded-xl p-8 flex flex-col items-center text-center gap-6"
-      style={{ backgroundColor: C.white, border: `2px solid ${C.lightPurple}` }}
-    >
-      <div className="flex flex-col gap-2 max-w-lg">
-        <h2 className="text-xl" style={{ color: C.black, fontWeight: 700 }}>
-          Get your full AI Visibility Report
-        </h2>
-        <p className="text-sm leading-relaxed" style={{ color: C.charcoal }}>
-          See the complete breakdown including strategic recommendations, competitive analysis, and signal-level data.
-        </p>
-      </div>
-
-      {/* HubSpot form embed target */}
-      <div
-        id="hubspot-form-container"
-        ref={formRef}
-        className="w-full max-w-md rounded-lg p-6"
-        style={{ backgroundColor: C.lightGrey, border: `1px solid ${C.lightPurple}`, minHeight: 80 }}
-      >
-      </div>
-
-      <p className="text-sm" style={{ color: C.charcoal }}>
-        A demandDrive strategist will follow up with your full report and analysis.
-      </p>
-    </section>
-  );
-}
-
 // ─── Share View ───────────────────────────────────────────────────────────────
 
 export function ShareView({ report }: { report: Report }) {
-  const formRef = useRef<HTMLDivElement | null>(null);
   const totalPct = report.totalScore;
-
-  useEffect(() => {
-    const script = document.createElement('script');
-    script.src = '//js.hsforms.net/forms/embed/v2.js';
-    script.charset = 'utf-8';
-    script.type = 'text/javascript';
-    script.onload = () => {
-      (window as any).hbspt?.forms.create({
-        region: 'na1',
-        portalId: '3716329',
-        formId: 'de5027df-86c0-4d4d-a1da-8495317feed3',
-        target: '#hubspot-form-container',
-      });
-    };
-    document.body.appendChild(script);
-  }, []);
-
-  const scrollToForm = () => {
-    formRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
 
   const metaItems = [
     report.brandName ? `Brand: ${report.brandName}` : null,
@@ -280,19 +225,21 @@ export function ShareView({ report }: { report: Report }) {
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <a href="/"><img src="https://emjqwdk52dd.exactdn.com/wp-content/uploads/2025/12/Logo-Dark-Mode.svg" alt="demandDrive" style={{ height: 32 }} /></a>
-          <button
-            onClick={scrollToForm}
+          <a
+            href="https://www.demanddrive.com/contact/"
+            target="_blank"
+            rel="noopener noreferrer"
             className="px-4 py-2 text-sm rounded-lg transition-opacity hover:opacity-90"
             style={{ backgroundColor: C.blue, color: C.white, fontWeight: 500 }}
           >
-            Get Full Report
-          </button>
+            Contact Us
+          </a>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8 flex flex-col gap-6">
 
-        {/* Hero — same tightened format */}
+        {/* Hero */}
         <section className="rounded-xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6" style={{ backgroundColor: C.white, border: `1px solid ${C.lightGrey}` }}>
           <div>
             <h1 className="text-2xl" style={{ color: C.black, fontWeight: 700 }}>{report.domain}</h1>
@@ -314,20 +261,11 @@ export function ShareView({ report }: { report: Report }) {
           <ScoreGauge score={report.totalScore} size={160} />
         </section>
 
-        {/* Simplified bucket cards — no expandable summaries */}
+        {/* Simplified bucket cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <BucketCardSimple
-            title="Technical Foundation"
-            bucket={report.buckets.technical}
-          />
-          <BucketCardSimple
-            title="Search Authority"
-            bucket={report.buckets.searchAuthority}
-          />
-          <BucketCardSimple
-            title="Brand Presence"
-            bucket={report.buckets.brandPresence}
-          />
+          <BucketCardSimple title="Technical Foundation" bucket={report.buckets.technical} />
+          <BucketCardSimple title="Search Authority"     bucket={report.buckets.searchAuthority} />
+          <BucketCardSimple title="Brand Presence"       bucket={report.buckets.brandPresence} />
           <BucketCardSimple
             title="AI Visibility"
             bucket={report.buckets.aiVisibility}
@@ -339,13 +277,28 @@ export function ShareView({ report }: { report: Report }) {
         {/* Teaser insights — first item visible, rest blurred */}
         <TeaserInsights report={report} />
 
-        {/* Gate — HubSpot form + note */}
-        <GateSection formRef={formRef} />
-
       </main>
 
-      {/* CTA Band */}
-      <CTABand />
+      {/* Unified CTA */}
+      <section className="py-16 px-6 text-center" style={{ backgroundColor: C.navy }}>
+        <div className="max-w-2xl mx-auto flex flex-col items-center gap-6">
+          <h2 className="text-2xl" style={{ color: C.white, fontWeight: 700 }}>
+            Get your full AI Visibility Report
+          </h2>
+          <p className="text-base leading-relaxed" style={{ color: C.lightPurple, fontWeight: 400 }}>
+            See the complete breakdown including strategic recommendations, competitive analysis, and signal-level data. A demandDrive strategist will follow up with your full report and analysis.
+          </p>
+          <a
+            href="https://www.demanddrive.com/contact/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="transition-opacity hover:opacity-90"
+            style={{ backgroundColor: C.blue, color: C.white, fontWeight: 500, padding: '12px 32px', borderRadius: 6, fontSize: 14, display: 'inline-block' }}
+          >
+            Contact Us
+          </a>
+        </div>
+      </section>
 
       <footer style={{ backgroundColor: C.navy2 }}>
         <div className="max-w-5xl mx-auto px-6 py-8 text-center text-xs" style={{ color: C.white }}>
