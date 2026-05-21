@@ -397,3 +397,66 @@ export function generateMockReport(
     competitorReports,
   };
 }
+
+// Recompute the three AI-score-dependent derived fields using live AI data.
+// Called in the API route after runAiPlatformProbes completes so that
+// bucketSummaries, executiveSummary, and insights reflect the actual live scores
+// rather than the seeded mock scores that were used as placeholders inside generateMockReport.
+// Intermediate signal values (authority, keywords, mentions, etc.) are reconstructed
+// from the rawValues already stored in the report's bucket signals.
+export function recomputeDerivedFields(
+  report: Report,
+  liveAiVisibility: AiBucketScore,
+  liveTotalScore: number,
+): Pick<Report, 'bucketSummaries' | 'executiveSummary' | 'insights'> {
+  const name = report.brandName || brandName(report.domain);
+  const ind = report.industry || 'technology';
+
+  const techSigs  = report.buckets.technical.signals;
+  const authSigs  = report.buckets.searchAuthority.signals;
+  const brandSigs = report.buckets.brandPresence.signals;
+
+  // Re-extract intermediate values from stored rawValues.
+  // Formats match what generateMockReport writes — see signal definitions above.
+  const sitemapPts = techSigs[0]?.earned ?? 0;
+  const faqPts     = techSigs[2]?.earned ?? 0;
+  const cwvPts     = techSigs[3]?.earned ?? 0;
+
+  // Authority Score is stored as a plain number
+  const authorityRaw     = typeof authSigs[0]?.rawValue === 'number' ? authSigs[0].rawValue : 0;
+  // Referring domains stored as toLocaleString() — strip commas before parsing
+  const referringDomains = parseFloat(String(authSigs[1]?.rawValue ?? '0').replace(/,/g, '')) || 0;
+  // "N,NNN keywords" — strip commas, take number before space
+  const keywordCount     = parseInt(String(authSigs[3]?.rawValue ?? '0').replace(/,/g, '').split(' ')[0], 10) || 0;
+  // "NN% branded" — take number before %
+  const brandedPct       = parseInt(String(authSigs[4]?.rawValue ?? '0').split('%')[0], 10) || 0;
+  // "NN mentions/mo" — take number before space
+  const mentionCount     = parseInt(String(brandSigs[0]?.rawValue ?? '0').split(' ')[0], 10) || 0;
+  // "NN citing domains" — take number before space
+  const citationCount    = parseInt(String(brandSigs[1]?.rawValue ?? '0').split(' ')[0], 10) || 0;
+
+  const aiPts        = liveAiVisibility.earned;
+  const platformScores = liveAiVisibility.aiPlatformScores ?? [];
+
+  return {
+    bucketSummaries: mockBucketSummaries(
+      name, ind,
+      report.buckets.technical.earned, sitemapPts, cwvPts, faqPts,
+      report.buckets.searchAuthority.earned, authorityRaw, referringDomains, keywordCount, brandedPct,
+      mentionCount, citationCount,
+      aiPts, platformScores,
+    ),
+    executiveSummary: mockExecutiveSummary(
+      name, ind, liveTotalScore,
+      report.buckets.technical.earned, report.buckets.searchAuthority.earned,
+      report.buckets.brandPresence.earned, aiPts,
+      authorityRaw, referringDomains, brandedPct, mentionCount, platformScores,
+    ),
+    insights: mockInsights(
+      report.domain, report.industry, liveTotalScore,
+      report.buckets.technical.earned, report.buckets.searchAuthority.earned,
+      report.buckets.brandPresence.earned, aiPts,
+      authorityRaw, referringDomains, keywordCount, brandedPct, mentionCount, platformScores,
+    ),
+  };
+}

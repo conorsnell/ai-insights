@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { redis } from '@/lib/redis';
-import { generateMockReport } from '@/lib/mock';
+import { generateMockReport, recomputeDerivedFields } from '@/lib/mock';
 import { runAiPlatformProbes, generateCrossPlatformInsight, buildAiVisibilityBucket } from '@/lib/ai-probes';
 
 function normalizeDomain(raw: string): string {
@@ -222,13 +222,16 @@ export async function POST(req: NextRequest) {
         ];
       }
 
-      const report = {
+      // Build base report with live aiVisibility bucket, then recompute all three
+      // AI-score-dependent derived fields so they reflect the actual live scores.
+      const reportBase = {
         ...mockReport,
         totalScore,
         keywordSource,
         buckets: { ...mockReport.buckets, aiVisibility },
         competitorReports,
       };
+      const report = { ...reportBase, ...recomputeDerivedFields(reportBase, aiVisibility, totalScore) };
 
       const reportWithToken = { ...report, shareToken };
       await Promise.all([
@@ -280,13 +283,16 @@ export async function POST(req: NextRequest) {
       ];
     }
 
-    const report = {
+    // Build base report with live aiVisibility bucket, then recompute all three
+    // AI-score-dependent derived fields so they reflect the actual live scores.
+    const reportBase = {
       ...mockReport,
       totalScore,
       keywordSource,
       buckets: { ...mockReport.buckets, aiVisibility },
       competitorReports,
     };
+    const report = { ...reportBase, ...recomputeDerivedFields(reportBase, aiVisibility, totalScore) };
 
     const reportWithToken = { ...report, shareToken };
 
