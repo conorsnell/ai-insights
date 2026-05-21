@@ -53,6 +53,7 @@ function mockPlatformScores(
         score,
         maxScore: max,
         snippet: score > 0 ? snippets[i][prominent ? 0 : 1] : undefined,
+        brandMentioned: mentioned,
       };
     });
     return {

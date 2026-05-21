@@ -4,7 +4,14 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { AiPlatformScore, AiPlatformProbeResult, AiBucketScore, PerplexityProbe } from './types';
 import { PLATFORM_CONFIG } from './platform-config';
 
-function buildPrompts(brand: string, industry: string): string[] {
+function buildPrompts(brand: string, industry: string, categoryKeywords?: string[]): string[] {
+  if (categoryKeywords && categoryKeywords.length >= 2) {
+    return [
+      `What are the best ${categoryKeywords[0]} solutions?`,
+      `Who are the leading ${categoryKeywords[1]} companies?`,
+      `What do experts recommend for ${categoryKeywords[0]}?`,
+    ];
+  }
   return [
     `What is ${brand}?`,
     `Who are the top ${industry} companies?`,
@@ -16,11 +23,12 @@ function scoreProbe(
   response: string,
   brand: string,
   probeMax: number,
-): { score: number; snippet: string } {
+): { score: number; snippet: string; brandMentioned: boolean } {
   const normalized = response.toLowerCase();
   const brandLower = brand.toLowerCase();
 
-  if (!normalized.includes(brandLower)) return { score: 0, snippet: '' };
+  // Hard requirement: brand must appear in the response for any points
+  if (!normalized.includes(brandLower)) return { score: 0, snippet: '', brandMentioned: false };
 
   const halfIndex = Math.floor(normalized.length / 2);
   const prominent = normalized.slice(0, halfIndex).includes(brandLower);
@@ -31,7 +39,7 @@ function scoreProbe(
   const end = Math.min(response.length, idx + 120);
   const snippet = response.slice(start, end).replace(/\s+/g, ' ').trim();
 
-  return { score, snippet };
+  return { score, snippet, brandMentioned: true };
 }
 
 function unavailable(
@@ -48,12 +56,13 @@ function unavailable(
       prompt,
       score: 0,
       maxScore: config.probeMaxes[i],
+      brandMentioned: false,
     })),
   };
 }
 
-async function probePerplexity(brand: string, industry: string): Promise<AiPlatformScore> {
-  const prompts = buildPrompts(brand, industry);
+async function probePerplexity(brand: string, industry: string, categoryKeywords?: string[]): Promise<AiPlatformScore> {
+  const prompts = buildPrompts(brand, industry, categoryKeywords);
   try {
     const probeResults: AiPlatformProbeResult[] = [];
     for (let i = 0; i < prompts.length; i++) {
@@ -74,8 +83,8 @@ async function probePerplexity(brand: string, industry: string): Promise<AiPlatf
       const data = await res.json();
       const text: string = data.choices?.[0]?.message?.content ?? '';
       const config = PLATFORM_CONFIG.Perplexity;
-      const { score, snippet } = scoreProbe(text, brand, config.probeMaxes[i]);
-      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined });
+      const { score, snippet, brandMentioned } = scoreProbe(text, brand, config.probeMaxes[i]);
+      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined, brandMentioned });
     }
     return {
       platform: 'Perplexity',
@@ -89,8 +98,8 @@ async function probePerplexity(brand: string, industry: string): Promise<AiPlatf
   }
 }
 
-async function probeChatGPT(brand: string, industry: string): Promise<AiPlatformScore> {
-  const prompts = buildPrompts(brand, industry);
+async function probeChatGPT(brand: string, industry: string, categoryKeywords?: string[]): Promise<AiPlatformScore> {
+  const prompts = buildPrompts(brand, industry, categoryKeywords);
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const probeResults: AiPlatformProbeResult[] = [];
@@ -102,8 +111,8 @@ async function probeChatGPT(brand: string, industry: string): Promise<AiPlatform
       });
       const text = completion.choices[0]?.message?.content ?? '';
       const config = PLATFORM_CONFIG.ChatGPT;
-      const { score, snippet } = scoreProbe(text, brand, config.probeMaxes[i]);
-      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined });
+      const { score, snippet, brandMentioned } = scoreProbe(text, brand, config.probeMaxes[i]);
+      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined, brandMentioned });
     }
     return {
       platform: 'ChatGPT',
@@ -117,10 +126,10 @@ async function probeChatGPT(brand: string, industry: string): Promise<AiPlatform
   }
 }
 
-async function probeGemini(brand: string, industry: string): Promise<AiPlatformScore> {
+async function probeGemini(brand: string, industry: string, categoryKeywords?: string[]): Promise<AiPlatformScore> {
   // NOTE: The Generative Language API must be enabled in Google Cloud Console:
   // APIs & Services > Library > search "Generative Language API" > Enable
-  const prompts = buildPrompts(brand, industry);
+  const prompts = buildPrompts(brand, industry, categoryKeywords);
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
@@ -129,8 +138,8 @@ async function probeGemini(brand: string, industry: string): Promise<AiPlatformS
       const result = await model.generateContent(prompts[i]);
       const text = result.response.text();
       const config = PLATFORM_CONFIG.Gemini;
-      const { score, snippet } = scoreProbe(text, brand, config.probeMaxes[i]);
-      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined });
+      const { score, snippet, brandMentioned } = scoreProbe(text, brand, config.probeMaxes[i]);
+      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined, brandMentioned });
     }
     return {
       platform: 'Gemini',
@@ -146,8 +155,8 @@ async function probeGemini(brand: string, industry: string): Promise<AiPlatformS
   }
 }
 
-async function probeClaude(brand: string, industry: string): Promise<AiPlatformScore> {
-  const prompts = buildPrompts(brand, industry);
+async function probeClaude(brand: string, industry: string, categoryKeywords?: string[]): Promise<AiPlatformScore> {
+  const prompts = buildPrompts(brand, industry, categoryKeywords);
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const probeResults: AiPlatformProbeResult[] = [];
@@ -159,8 +168,8 @@ async function probeClaude(brand: string, industry: string): Promise<AiPlatformS
       });
       const text = message.content[0]?.type === 'text' ? message.content[0].text : '';
       const config = PLATFORM_CONFIG.Claude;
-      const { score, snippet } = scoreProbe(text, brand, config.probeMaxes[i]);
-      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined });
+      const { score, snippet, brandMentioned } = scoreProbe(text, brand, config.probeMaxes[i]);
+      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined, brandMentioned });
     }
     return {
       platform: 'Claude',
@@ -177,12 +186,13 @@ async function probeClaude(brand: string, industry: string): Promise<AiPlatformS
 export async function runAiPlatformProbes(
   brand: string,
   industry: string,
+  categoryKeywords?: string[],
 ): Promise<AiPlatformScore[]> {
   const [perplexity, chatgpt, gemini, claude] = await Promise.all([
-    probePerplexity(brand, industry),
-    probeChatGPT(brand, industry),
-    probeGemini(brand, industry),
-    probeClaude(brand, industry),
+    probePerplexity(brand, industry, categoryKeywords),
+    probeChatGPT(brand, industry, categoryKeywords),
+    probeGemini(brand, industry, categoryKeywords),
+    probeClaude(brand, industry, categoryKeywords),
   ]);
   return [perplexity, chatgpt, gemini, claude];
 }
