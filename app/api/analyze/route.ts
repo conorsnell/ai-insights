@@ -20,8 +20,20 @@ function domainFallbackName(domain: string): string {
 // Low-quality keyword signals to exclude from SEMRush probe keywords.
 const KEYWORD_STOPWORDS = ['what is', 'how to', 'basics', 'definition', 'tutorial', 'guide', ' vs ', 'meaning'];
 
+// Maps SEMRush intent codes to a numeric score used in keyword ranking.
+// Per SEMRush docs: 0 = informational, 1 = navigational, 2 = commercial, 3 = transactional.
+// User-facing label mapping: commercial (1) and transactional (2) only pass the intent filter.
+function intentScore(intentField: string): number {
+  const values = intentField.split(',').map(s => s.trim());
+  if (values.includes('2')) return 100;  // transactional
+  if (values.includes('1')) return 75;   // commercial
+  if (values.includes('0')) return 25;   // informational (filtered out before ranking, but safe default)
+  return 0;                              // navigational
+}
+
 // Fetch top non-branded organic keywords from SEMRush to use as probe category context.
-// Returns up to 3 keywords sorted by a combined volume+difficulty score, filtered for quality.
+// Returns up to 3 keywords: commercial/transactional intent only, filtered for quality,
+// ranked by combined volume + keyword difficulty + intent signal.
 // Falls back to [] if SEMRush is unavailable, so callers fall back to industry probes.
 async function fetchCategoryKeywords(domain: string, brandName: string): Promise<string[]> {
   if (!process.env.SEMRUSH_API_KEY) return [];
@@ -33,7 +45,7 @@ async function fetchCategoryKeywords(domain: string, brandName: string): Promise
     url.searchParams.set('database', 'us');
     url.searchParams.set('display_limit', '50');
     url.searchParams.set('display_sort', 'nq_desc');
-    url.searchParams.set('export_columns', 'Ph,Nq,Kd');
+    url.searchParams.set('export_columns', 'Ph,Nq,Kd,In');
 
     const res = await fetch(url.toString(), { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return [];
@@ -46,23 +58,28 @@ async function fetchCategoryKeywords(domain: string, brandName: string): Promise
       .slice(1)                    // skip header row
       .map(line => {
         const parts = line.split(';');
-        const kw  = (parts[0] ?? '').trim();
-        const vol = parseInt((parts[1] ?? '0').trim(), 10);
-        const kd  = parseInt((parts[2] ?? '0').trim(), 10);
-        return { kw, vol, kd };
+        const kw     = (parts[0] ?? '').trim();
+        const vol    = parseInt((parts[1] ?? '0').trim(), 10);
+        const kd     = parseInt((parts[2] ?? '0').trim(), 10);
+        const intent = (parts[3] ?? '').trim();
+        return { kw, vol, kd, intent };
       })
       // Hard quality filters
-      .filter(({ kw }) => {
+      .filter(({ kw, intent }) => {
         if (kw.length < 12) return false;
         if (kw.toLowerCase().includes(brandLower)) return false;
         if (KEYWORD_STOPWORDS.some(stop => kw.toLowerCase().includes(stop))) return false;
-        if (kw.trim().split(/\s+/).length < 2) return false;   // at least 2 words
+        if (kw.trim().split(/\s+/).length < 2) return false;                      // at least 2 words
+        if (kw.trim().split(/\s+/).some(word => /^[A-Z]/.test(word))) return false; // no proper nouns
+        // Only commercial (1) or transactional (2) intent
+        const intentValues = intent.split(',').map(s => s.trim());
+        if (!intentValues.some(v => v === '1' || v === '2')) return false;
         return true;
       })
-      // Rank by combined signal: normalise vol (weight 0.6) + kd (weight 0.4, higher = more competitive = more relevant)
+      // Rank by combined signal: vol (0.4) + kd (0.3) + intent (0.3)
       .sort((a, b) => {
-        const scoreA = a.vol * 0.6 + a.kd * 0.4;
-        const scoreB = b.vol * 0.6 + b.kd * 0.4;
+        const scoreA = a.vol * 0.4 + a.kd * 0.3 + intentScore(a.intent) * 0.3;
+        const scoreB = b.vol * 0.4 + b.kd * 0.3 + intentScore(b.intent) * 0.3;
         return scoreB - scoreA;
       })
       .slice(0, 3)

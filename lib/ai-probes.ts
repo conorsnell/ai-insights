@@ -4,19 +4,57 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { AiPlatformScore, AiPlatformProbeResult, AiBucketScore, PerplexityProbe } from './types';
 import { PLATFORM_CONFIG } from './platform-config';
 
-function buildPrompts(brand: string, industry: string, categoryKeywords?: string[]): string[] {
+// Template fallback: Q1 branded, Q2 category, Q3 solution — mirrors the Claude-generated structure.
+function buildFallbackPrompts(brand: string, industry: string, categoryKeywords?: string[]): string[] {
   if (categoryKeywords && categoryKeywords.length >= 2) {
     return [
-      `What are the best ${categoryKeywords[0]} solutions?`,
-      `Who are the leading ${categoryKeywords[1]} companies?`,
-      `What do experts recommend for ${categoryKeywords[0]}?`,
+      `What does ${brand} do and who do they work with?`,
+      `Who are the leading ${categoryKeywords[0]} companies?`,
+      `What do experts recommend for ${categoryKeywords[1]}?`,
     ];
   }
   return [
-    `What is ${brand}?`,
+    `What does ${brand} do and who do they work with?`,
     `Who are the top ${industry} companies?`,
-    `What do people say about ${brand}?`,
+    `What do experts recommend for ${industry} solutions?`,
   ];
+}
+
+// Generate 3 probe questions via Claude covering three stages of the buyer journey:
+//   Q1 — branded: tests whether AI platforms have accurate info about the brand
+//   Q2 — category: tests shortlisting visibility (no brand name)
+//   Q3 — solution: tests validation-stage visibility (no brand name)
+// Falls back to template prompts on any failure.
+async function generateProbeQuestions(
+  brand: string,
+  industry: string,
+  categoryKeywords?: string[],
+): Promise<string[]> {
+  const fallback = buildFallbackPrompts(brand, industry, categoryKeywords);
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const message = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 300,
+      system: `You are generating search queries that a B2B buyer would use when researching vendors. Generate exactly 3 questions in this order: (1) a natural branded query asking what the brand does or who they serve, (2) a category-level query a buyer uses when shortlisting vendors without knowing the brand yet, (3) a solution-level query a buyer uses when validating options. Questions 2 and 3 must NOT include the brand name. All questions must be grammatically natural. Return ONLY a valid JSON array of 3 strings, nothing else.`,
+      messages: [{
+        role: 'user',
+        content: `Brand: ${brand}\nIndustry: ${industry}\nCategory keywords: ${(categoryKeywords ?? []).join(', ')}`,
+      }],
+    });
+    const raw = message.content[0]?.type === 'text' ? message.content[0].text.trim() : '';
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === 3 &&
+      parsed.every((q): q is string => typeof q === 'string' && q.length > 0)
+    ) {
+      return parsed;
+    }
+    return fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function scoreProbe(
@@ -61,8 +99,7 @@ function unavailable(
   };
 }
 
-async function probePerplexity(brand: string, industry: string, categoryKeywords?: string[]): Promise<AiPlatformScore> {
-  const prompts = buildPrompts(brand, industry, categoryKeywords);
+async function probePerplexity(brand: string, prompts: string[]): Promise<AiPlatformScore> {
   try {
     const probeResults: AiPlatformProbeResult[] = [];
     for (let i = 0; i < prompts.length; i++) {
@@ -98,8 +135,7 @@ async function probePerplexity(brand: string, industry: string, categoryKeywords
   }
 }
 
-async function probeChatGPT(brand: string, industry: string, categoryKeywords?: string[]): Promise<AiPlatformScore> {
-  const prompts = buildPrompts(brand, industry, categoryKeywords);
+async function probeChatGPT(brand: string, prompts: string[]): Promise<AiPlatformScore> {
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const probeResults: AiPlatformProbeResult[] = [];
@@ -126,10 +162,9 @@ async function probeChatGPT(brand: string, industry: string, categoryKeywords?: 
   }
 }
 
-async function probeGemini(brand: string, industry: string, categoryKeywords?: string[]): Promise<AiPlatformScore> {
+async function probeGemini(brand: string, prompts: string[]): Promise<AiPlatformScore> {
   // NOTE: The Generative Language API must be enabled in Google Cloud Console:
   // APIs & Services > Library > search "Generative Language API" > Enable
-  const prompts = buildPrompts(brand, industry, categoryKeywords);
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
@@ -155,8 +190,7 @@ async function probeGemini(brand: string, industry: string, categoryKeywords?: s
   }
 }
 
-async function probeClaude(brand: string, industry: string, categoryKeywords?: string[]): Promise<AiPlatformScore> {
-  const prompts = buildPrompts(brand, industry, categoryKeywords);
+async function probeClaude(brand: string, prompts: string[]): Promise<AiPlatformScore> {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const probeResults: AiPlatformProbeResult[] = [];
@@ -188,11 +222,13 @@ export async function runAiPlatformProbes(
   industry: string,
   categoryKeywords?: string[],
 ): Promise<AiPlatformScore[]> {
+  // Generate probe questions once via Claude; all four platforms receive the same prompts.
+  const prompts = await generateProbeQuestions(brand, industry, categoryKeywords);
   const [perplexity, chatgpt, gemini, claude] = await Promise.all([
-    probePerplexity(brand, industry, categoryKeywords),
-    probeChatGPT(brand, industry, categoryKeywords),
-    probeGemini(brand, industry, categoryKeywords),
-    probeClaude(brand, industry, categoryKeywords),
+    probePerplexity(brand, prompts),
+    probeChatGPT(brand, prompts),
+    probeGemini(brand, prompts),
+    probeClaude(brand, prompts),
   ]);
   return [perplexity, chatgpt, gemini, claude];
 }
