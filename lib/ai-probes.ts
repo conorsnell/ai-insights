@@ -57,16 +57,38 @@ async function generateProbeQuestions(
   }
 }
 
+const NEGATIVE_PHRASES = [
+  "i don't have information about",
+  "i don't have specific information",
+  "i couldn't find information",
+  "no information about",
+  "not familiar with",
+  "i'm not aware of",
+  "doesn't appear in my",
+  "no results for",
+  "i cannot find",
+  "i have no information",
+  "don't have any information",
+  "unable to find information",
+  "not in my knowledge",
+  "i lack information",
+];
+
 function scoreProbe(
   response: string,
   brand: string,
   probeMax: number,
-): { score: number; snippet: string; brandMentioned: boolean } {
+): { score: number; snippet: string; brandMentioned: boolean; negativeResponse: boolean } {
   const normalized = response.toLowerCase();
   const brandLower = brand.toLowerCase();
 
+  // Negative response: platform explicitly signals it doesn't know the brand
+  if (NEGATIVE_PHRASES.some(phrase => normalized.includes(phrase))) {
+    return { score: 0, snippet: '', brandMentioned: false, negativeResponse: true };
+  }
+
   // Hard requirement: brand must appear in the response for any points
-  if (!normalized.includes(brandLower)) return { score: 0, snippet: '', brandMentioned: false };
+  if (!normalized.includes(brandLower)) return { score: 0, snippet: '', brandMentioned: false, negativeResponse: false };
 
   const halfIndex = Math.floor(normalized.length / 2);
   const prominent = normalized.slice(0, halfIndex).includes(brandLower);
@@ -77,7 +99,7 @@ function scoreProbe(
   const end = Math.min(response.length, idx + 120);
   const snippet = response.slice(start, end).replace(/\s+/g, ' ').trim();
 
-  return { score, snippet, brandMentioned: true };
+  return { score, snippet, brandMentioned: true, negativeResponse: false };
 }
 
 function unavailable(
@@ -95,6 +117,7 @@ function unavailable(
       score: 0,
       maxScore: config.probeMaxes[i],
       brandMentioned: false,
+      negativeResponse: false,
     })),
   };
 }
@@ -120,8 +143,8 @@ async function probePerplexity(brand: string, prompts: string[]): Promise<AiPlat
       const data = await res.json();
       const text: string = data.choices?.[0]?.message?.content ?? '';
       const config = PLATFORM_CONFIG.Perplexity;
-      const { score, snippet, brandMentioned } = scoreProbe(text, brand, config.probeMaxes[i]);
-      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined, brandMentioned });
+      const { score, snippet, brandMentioned, negativeResponse } = scoreProbe(text, brand, config.probeMaxes[i]);
+      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined, brandMentioned, negativeResponse });
     }
     return {
       platform: 'Perplexity',
@@ -147,8 +170,8 @@ async function probeChatGPT(brand: string, prompts: string[]): Promise<AiPlatfor
       });
       const text = completion.choices[0]?.message?.content ?? '';
       const config = PLATFORM_CONFIG.ChatGPT;
-      const { score, snippet, brandMentioned } = scoreProbe(text, brand, config.probeMaxes[i]);
-      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined, brandMentioned });
+      const { score, snippet, brandMentioned, negativeResponse } = scoreProbe(text, brand, config.probeMaxes[i]);
+      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined, brandMentioned, negativeResponse });
     }
     return {
       platform: 'ChatGPT',
@@ -173,8 +196,8 @@ async function probeGemini(brand: string, prompts: string[]): Promise<AiPlatform
       const result = await model.generateContent(prompts[i]);
       const text = result.response.text();
       const config = PLATFORM_CONFIG.Gemini;
-      const { score, snippet, brandMentioned } = scoreProbe(text, brand, config.probeMaxes[i]);
-      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined, brandMentioned });
+      const { score, snippet, brandMentioned, negativeResponse } = scoreProbe(text, brand, config.probeMaxes[i]);
+      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined, brandMentioned, negativeResponse });
     }
     return {
       platform: 'Gemini',
@@ -202,8 +225,8 @@ async function probeClaude(brand: string, prompts: string[]): Promise<AiPlatform
       });
       const text = message.content[0]?.type === 'text' ? message.content[0].text : '';
       const config = PLATFORM_CONFIG.Claude;
-      const { score, snippet, brandMentioned } = scoreProbe(text, brand, config.probeMaxes[i]);
-      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined, brandMentioned });
+      const { score, snippet, brandMentioned, negativeResponse } = scoreProbe(text, brand, config.probeMaxes[i]);
+      probeResults.push({ prompt: prompts[i], score, maxScore: config.probeMaxes[i], snippet: snippet || undefined, brandMentioned, negativeResponse });
     }
     return {
       platform: 'Claude',

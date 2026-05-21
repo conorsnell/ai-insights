@@ -28,6 +28,7 @@ export interface AiPlatformProbeResult {
   maxScore: number;
   snippet?: string;
   brandMentioned: boolean;
+  negativeResponse: boolean;
 }
 
 export interface AiPlatformScore {

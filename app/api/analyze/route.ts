@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
 import { redis } from '@/lib/redis';
 import { generateMockReport } from '@/lib/mock';
 import { runAiPlatformProbes, generateCrossPlatformInsight, buildAiVisibilityBucket } from '@/lib/ai-probes';
@@ -88,6 +89,42 @@ async function fetchCategoryKeywords(domain: string, brandName: string): Promise
     return keywords;
   } catch {
     return [];
+  }
+}
+
+// Use Claude to filter candidate SEMRush keywords down to those representing the company's
+// core products, services, or capabilities. Falls back to the unvalidated list on any failure.
+async function validateKeywordsWithClaude(
+  domain: string,
+  brandName: string,
+  industry: string | undefined,
+  keywords: string[],
+): Promise<string[]> {
+  if (!keywords.length) return keywords;
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const industryLine = industry ? `Industry: ${industry}\n` : '';
+    const message = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 300,
+      system: `You are a B2B marketing analyst. Your job is to determine which keywords are directly related to a company's core products, services, or capabilities -- not their clients, case studies, content topics, or accidental rankings. Return ONLY a valid JSON array of the relevant keywords, nothing else.`,
+      messages: [{
+        role: 'user',
+        content: `Company domain: ${domain}\nBrand name: ${brandName}\n${industryLine}Candidate keywords: ${keywords.join(', ')}\n\nReturn only the keywords that represent core products, services, or capabilities this company likely sells. Exclude any that appear to be client names, company names, content topics, or unrelated terms. Return a JSON array of strings.`,
+      }],
+    });
+    const raw = message.content[0]?.type === 'text' ? message.content[0].text.trim() : '';
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((k): k is string => typeof k === 'string')) {
+      // Cap at 5, then intersect with original list to prevent hallucination
+      const validated = parsed
+        .filter(k => keywords.includes(k))
+        .slice(0, 5);
+      return validated.length ? validated : keywords;
+    }
+    return keywords;
+  } catch {
+    return keywords;
   }
 }
 
@@ -206,7 +243,9 @@ export async function POST(req: NextRequest) {
     ]);
 
     if (semrushKeywords.length >= 2) {
-      categoryKeywords = semrushKeywords;
+      // Validate with Claude to strip client names, branded terms, and off-topic rankings
+      const validated = await validateKeywordsWithClaude(domain, brandName, industry, semrushKeywords);
+      categoryKeywords = validated;
       keywordSource = 'semrush';
     } else {
       categoryKeywords = [];

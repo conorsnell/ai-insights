@@ -305,8 +305,14 @@ function PlatformRow({ platform }: { platform: AiPlatformScore }) {
                       {probe.score}/{probe.maxScore}
                     </span>
                   </div>
-                  <p className="text-xs mt-1" style={{ color: probe.brandMentioned ? C.green : '#dc2626' }}>
-                    {probe.brandMentioned ? '✓ Brand mentioned' : '✗ Brand not mentioned'}
+                  <p className="text-xs mt-1" style={{
+                    color: probe.brandMentioned ? C.green : probe.negativeResponse ? C.orange : '#dc2626',
+                  }}>
+                    {probe.brandMentioned
+                      ? '✓ Brand mentioned'
+                      : probe.negativeResponse
+                      ? '⚠ Platform unfamiliar with brand'
+                      : '✗ Brand not mentioned'}
                   </p>
                   {probe.snippet && (
                     <p className="text-xs italic mt-1 pl-2.5" style={{ color: C.charcoal, borderLeft: `2px solid ${C.lightPurple}` }}>
