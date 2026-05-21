@@ -472,6 +472,9 @@ function AIVisibilitySection({
           <p className="text-xs mt-0.5" style={{ color: C.charcoal }}>
             Based on 3 live probes × 4 AI platforms — hover badge for methodology
           </p>
+          <p className="mt-0.5" style={{ fontFamily: 'Outfit, sans-serif', fontSize: 11, color: '#59596D', fontStyle: 'italic' }}>
+            Measures brand presence in live AI responses to buyer queries — distinct from citation-tracking tools that measure content source frequency.
+          </p>
         </div>
         <div className="ml-auto text-right">
           <span className="text-2xl font-bold" style={{ color: scoreColor(bucket.earned, bucket.possible), fontWeight: 700 }}>

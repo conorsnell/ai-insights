@@ -10,7 +10,9 @@ function normalizeDomain(raw: string): string {
 
 function generateSlug(domain: string): string {
   const base = domain.replace(/[^a-z0-9]/gi, '-').replace(/-+/g, '-').toLowerCase();
-  const id = Math.random().toString(36).slice(2, 8);
+  // crypto.randomUUID() guarantees a fresh, unique suffix on every call regardless of domain.
+  // Math.random() can return 0 or near-0, collapsing the suffix to empty/short and risking slug reuse.
+  const id = crypto.randomUUID().replace(/-/g, '').slice(0, 8);
   return `${base}-${id}`;
 }
 
@@ -182,7 +184,7 @@ export async function POST(req: NextRequest) {
       : [];
 
     const slug = generateSlug(domain);
-    const shareToken = Math.random().toString(36).slice(2, 14);
+    const shareToken = crypto.randomUUID().replace(/-/g, '');
     const ind = industry || 'technology';
     const firstCompetitor = competitors[0];
 
