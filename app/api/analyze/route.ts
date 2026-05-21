@@ -17,8 +17,11 @@ function domainFallbackName(domain: string): string {
   return domain.replace(/^www\./, '').replace(/\.(com|io|co|net|org|ai)(\/.*)?$/, '');
 }
 
+// Low-quality keyword signals to exclude from SEMRush probe keywords.
+const KEYWORD_STOPWORDS = ['what is', 'how to', 'basics', 'definition', 'tutorial', 'guide', ' vs ', 'meaning'];
+
 // Fetch top non-branded organic keywords from SEMRush to use as probe category context.
-// Returns up to 3 keywords sorted by search volume, filtered to exclude branded terms.
+// Returns up to 3 keywords sorted by a combined volume+difficulty score, filtered for quality.
 // Falls back to [] if SEMRush is unavailable, so callers fall back to industry probes.
 async function fetchCategoryKeywords(domain: string, brandName: string): Promise<string[]> {
   if (!process.env.SEMRUSH_API_KEY) return [];
@@ -30,7 +33,7 @@ async function fetchCategoryKeywords(domain: string, brandName: string): Promise
     url.searchParams.set('database', 'us');
     url.searchParams.set('display_limit', '50');
     url.searchParams.set('display_sort', 'nq_desc');
-    url.searchParams.set('export_columns', 'Ph,Nq');
+    url.searchParams.set('export_columns', 'Ph,Nq,Kd');
 
     const res = await fetch(url.toString(), { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return [];
@@ -42,11 +45,26 @@ async function fetchCategoryKeywords(domain: string, brandName: string): Promise
       .split('\n')
       .slice(1)                    // skip header row
       .map(line => {
-        const [kw, vol] = line.split(';');
-        return { kw: (kw ?? '').trim(), vol: parseInt((vol ?? '0').trim(), 10) };
+        const parts = line.split(';');
+        const kw  = (parts[0] ?? '').trim();
+        const vol = parseInt((parts[1] ?? '0').trim(), 10);
+        const kd  = parseInt((parts[2] ?? '0').trim(), 10);
+        return { kw, vol, kd };
       })
-      .filter(({ kw }) => kw.length > 0 && !kw.toLowerCase().includes(brandLower))
-      .sort((a, b) => b.vol - a.vol)
+      // Hard quality filters
+      .filter(({ kw }) => {
+        if (kw.length < 12) return false;
+        if (kw.toLowerCase().includes(brandLower)) return false;
+        if (KEYWORD_STOPWORDS.some(stop => kw.toLowerCase().includes(stop))) return false;
+        if (kw.trim().split(/\s+/).length < 2) return false;   // at least 2 words
+        return true;
+      })
+      // Rank by combined signal: normalise vol (weight 0.6) + kd (weight 0.4, higher = more competitive = more relevant)
+      .sort((a, b) => {
+        const scoreA = a.vol * 0.6 + a.kd * 0.4;
+        const scoreB = b.vol * 0.6 + b.kd * 0.4;
+        return scoreB - scoreA;
+      })
       .slice(0, 3)
       .map(({ kw }) => kw);
 
@@ -103,16 +121,80 @@ export async function POST(req: NextRequest) {
       ? body.brandName.trim()
       : await detectBrandName(domain);
 
+    // Parse manual key topics if provided (comma-separated, trimmed, non-empty, max 3)
+    const rawKeyTopics: string = body.keyTopics?.trim() || '';
+    const manualKeywords: string[] = rawKeyTopics
+      ? rawKeyTopics.split(',').map((k: string) => k.trim()).filter(Boolean).slice(0, 3)
+      : [];
+
     const slug = generateSlug(domain);
     const shareToken = Math.random().toString(36).slice(2, 14);
     const ind = industry || 'technology';
     const firstCompetitor = competitors[0];
 
-    // Phase 1: mock report (non-AI buckets) and SEMRush keyword fetch run in parallel
-    const [mockReport, categoryKeywords] = await Promise.all([
+    // Phase 1: mock report (non-AI buckets) runs in parallel with SEMRush keyword fetch
+    // (SEMRush fetch is skipped if manual keywords were supplied)
+    let keywordSource: 'manual' | 'semrush' | 'fallback';
+    let categoryKeywords: string[];
+
+    if (manualKeywords.length >= 2) {
+      // Manual keywords take full priority — skip SEMRush fetch entirely
+      categoryKeywords = manualKeywords;
+      keywordSource = 'manual';
+      const mockReport = generateMockReport(domain, slug, industry, competitors, brandName);
+      const [platformScores, competitorPlatformScores] = await Promise.all([
+        runAiPlatformProbes(brandName, ind, categoryKeywords),
+        firstCompetitor
+          ? runAiPlatformProbes(domainFallbackName(firstCompetitor), ind, categoryKeywords)
+          : Promise.resolve(null),
+      ]);
+
+      const crossPlatformInsight = await generateCrossPlatformInsight(brandName, platformScores);
+      const aiVisibility = buildAiVisibilityBucket(platformScores, crossPlatformInsight);
+
+      const totalScore =
+        mockReport.buckets.technical.earned +
+        mockReport.buckets.searchAuthority.earned +
+        mockReport.buckets.brandPresence.earned +
+        aiVisibility.earned;
+
+      let competitorReports = mockReport.competitorReports;
+      if (competitorPlatformScores && competitorReports?.length) {
+        competitorReports = [
+          { ...competitorReports[0], aiPlatformScores: competitorPlatformScores },
+          ...competitorReports.slice(1),
+        ];
+      }
+
+      const report = {
+        ...mockReport,
+        totalScore,
+        keywordSource,
+        buckets: { ...mockReport.buckets, aiVisibility },
+        competitorReports,
+      };
+
+      const reportWithToken = { ...report, shareToken };
+      await Promise.all([
+        redis.set(`report:${slug}`, reportWithToken),
+        redis.set(`share:${shareToken}`, slug),
+      ]);
+      return NextResponse.json({ slug });
+    }
+
+    // No manual keywords — fetch from SEMRush in parallel with mock report
+    const [mockReport, semrushKeywords] = await Promise.all([
       Promise.resolve(generateMockReport(domain, slug, industry, competitors, brandName)),
       fetchCategoryKeywords(domain, brandName),
     ]);
+
+    if (semrushKeywords.length >= 2) {
+      categoryKeywords = semrushKeywords;
+      keywordSource = 'semrush';
+    } else {
+      categoryKeywords = [];
+      keywordSource = 'fallback';
+    }
 
     // Phase 2: AI probes use category keywords when available, fall back to industry probes
     const [platformScores, competitorPlatformScores] = await Promise.all([
@@ -143,6 +225,7 @@ export async function POST(req: NextRequest) {
     const report = {
       ...mockReport,
       totalScore,
+      keywordSource,
       buckets: { ...mockReport.buckets, aiVisibility },
       competitorReports,
     };

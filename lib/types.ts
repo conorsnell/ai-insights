@@ -82,6 +82,7 @@ export interface Report {
   competitors?: string[];
   createdAt: string;
   totalScore: number;
+  keywordSource?: 'manual' | 'semrush' | 'fallback';
   buckets: {
     technical: BucketScore;
     searchAuthority: BucketScore;

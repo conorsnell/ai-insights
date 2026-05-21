@@ -746,6 +746,18 @@ function RawSignals({ report }: { report: Report }) {
               </table>
             </div>
           ))}
+          {report.keywordSource && (
+            <p className="px-5 py-2 text-xs" style={{ color: C.charcoal, borderTop: `1px solid ${C.lightGrey}` }}>
+              AI probe keyword source:{' '}
+              <span style={{ fontWeight: 600, color: C.black }}>
+                {report.keywordSource === 'manual'
+                  ? 'Manual (user-provided key topics)'
+                  : report.keywordSource === 'semrush'
+                  ? 'SEMRush organic keyword data'
+                  : 'Fallback (brand + industry prompts)'}
+              </span>
+            </p>
+          )}
         </div>
       )}
     </section>

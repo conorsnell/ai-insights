@@ -20,6 +20,7 @@ interface FormState {
   domain: string;
   brandName: string;
   industry: string;
+  keyTopics: string;
   competitor1: string;
   competitor2: string;
   competitor3: string;
@@ -40,7 +41,7 @@ function sleep(ms: number) {
 export default function HomePage() {
   const router = useRouter();
   const [form, setForm] = useState<FormState>({
-    domain: '', brandName: '', industry: '', competitor1: '', competitor2: '', competitor3: '',
+    domain: '', brandName: '', industry: '', keyTopics: '', competitor1: '', competitor2: '', competitor3: '',
   });
   const [loading, setLoading] = useState(false);
   const [stageIndex, setStageIndex] = useState(-1);
@@ -165,6 +166,24 @@ export default function HomePage() {
                     className={inputClass}
                     style={inputStyle}
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm mb-1.5" style={{ color: C.navy, fontWeight: 600 }}>
+                    Key Topics <span className="font-normal" style={{ color: C.charcoal }}>(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. plastic injection molding, contract manufacturing (comma separated)"
+                    value={form.keyTopics}
+                    onChange={update('keyTopics')}
+                    disabled={loading}
+                    className={inputClass}
+                    style={inputStyle}
+                  />
+                  <p className="text-xs mt-1.5" style={{ color: C.charcoal }}>
+                    Enter 2–3 core topics your prospect competes on. Used to generate more accurate AI visibility probes.
+                  </p>
                 </div>
 
                 <div>
